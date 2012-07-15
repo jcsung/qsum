@@ -1,0 +1,94 @@
+#!/usr/bin/php
+<?php
+
+/*
+Job ID               Username Queue    Jobname          SessID NDS   TSK Memory Time  S Time
+-------------------- -------- -------- ---------------- ------ ----- --- ------ ----- - -----
+012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012
+0         1         2         3         4         5         6         7         8         9
+*/
+
+$startlocs=explode(" ","0 21 30 39 56 63 69 73 80 86 88");
+$lengths=explode(" ","20 8 8 16 6 5 3 6 5 1 4");
+$lengths_normal=$lengths;
+$lengths_urgent=$lengths;
+for ($x=1; $x<sizeOf($lengths); $x++){
+	$lengths_urgent[$x]+=2;
+}
+
+$qdata=array();
+$tempstore="aslkj";
+$query="qstat -n > $tempstore";
+exec($query);
+
+$infile=fopen($tempstore,"r");
+for ($x=0; $x<5; $x++)  $line=fgets($infile);
+
+while (true){
+	$line=fgets($infile);
+	if ($line===false) break;
+	$temp=substr($line,0,strlen($line)-1);
+	if (strpos($line,"urgent")!==false){
+		$lengths=$lengths_urgent;
+	}
+	else{
+		$lengths=$lengths_normal;
+	}
+	$line=array();
+	for ($x=0; $x<sizeOf($startlocs); $x++){
+		$line[$x]=trim(substr($temp,$startlocs[$x],$lengths[$x]));
+	}
+//	echo "$temp\n";
+//	print_r($line); echo "\n";
+	$flag=false;
+	for ($countar=0; $countar<sizeOf($line); $countar++){
+		if (!trim($line[$countar])){
+			$flag=true;
+			break;
+		}
+	}
+	if ($flag) continue;
+	$user=$line[1];
+        $status=$line[9];
+	$procs=$line[5];
+        $node=$line[2];
+        $flag=false;
+        if(!isset($qdata[$user])){
+                $qdata[$user]=array();
+                $qdata[$user]["status"]=array(); //Job status (r, qw, S, etc.)
+		$qdata[$user]["status-procs"]=array();
+                $qdata[$user]["nodes"]="";       //Node names
+        }
+        if (isset($qdata[$user]["status"][$status])){
+                $qdata[$user]["status"][$status]++;
+		$qdata[$user]["status-procs"][$status]+=$procs;
+        }
+        else{
+                $qdata[$user]["status"][$status]=1;
+		$qdata[$user]["status-procs"][$status]=$procs;
+        }
+        if ($node!=-1&&!strstr($qdata[$user]["nodes"],$node)){
+                $qdata[$user]["nodes"].=",$node";
+        }
+}
+fclose($infile);
+$query="qstat -Q > $tempstore";
+exec($query);
+$free_procs=file_get_contents($tempstore);
+$query="rm $tempstore";
+exec($query);
+//print_r($qdata); echo "\n";
+echo "Queue Summary v. 2.1 (for PBS on Triton)\n";
+echo "--------------------\n";
+$keys=array_keys($qdata);
+for ($x=0; $x<sizeOf($keys); $x++){
+        echo $keys[$x].":\n";
+        $keys2=array_keys($qdata[$keys[$x]]["status"]);
+	$keys3=array_keys($qdata[$keys[$x]]["status-procs"]);
+        for ($y=0; $y<sizeOf($qdata[$keys[$x]]["status"]); $y++){
+                echo"  ".$keys2[$y].": ".$qdata[$keys[$x]]["status"][$keys2[$y]]." (Nodes: ".$qdata[$keys[$x]]["status-procs"][$keys3[$y]].")\n";
+        }
+        echo "  queue(s) used: ".substr($qdata[$keys[$x]]["nodes"],1,strlen($qdata[$keys[$x]]["nodes"]))."\n";
+}
+echo "$free_procs\n";
+?>
